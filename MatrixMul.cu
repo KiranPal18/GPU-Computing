@@ -22,7 +22,7 @@ int main() {
     //cin >> n >> k >> m;
 
 
-    //You might thing that doing Matrix Addition is to take two matrix (2D Tensor) and then add the individual terms
+    //You might thing that doing Matrix Multiplication of is to take two matrix (2D Tensor) and then add the individual terms
     //But the main problem we will be facing if we use vector<vector<int>> will simply be that the data
     //of matrix is not stored in a contigous manner, thus making is not feasible to transfer the data to 
     //Device(GPU)
@@ -59,8 +59,7 @@ int main() {
 
     //Kernel launch
 
-    //This is my kernel dimension
-    //We need this because we are doing operation in 2D tensor hence we divide the Tensor in each dimension of it
+    //We need to define our custom kernel blocks and grid as we are doing operation in 2D tensor hence we divide the Tensor in each dimension of it
     dim3 block(16, 16);
     dim3 grid(
         (m + block.x - 1) / block.x,

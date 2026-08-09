@@ -5,17 +5,24 @@
 using namespace std;
 using namespace cv;
 
+
+//Doing Gaussian Blurring of an image on GPU
+
+
 __global__ void imgblur(const unsigned char *a, unsigned char *b, float *kernel, const int k, const int h, const int w) {
     int j = threadIdx.x + blockIdx.x * blockDim.x;
     int i = threadIdx.y + blockIdx.y * blockDim.y;
-    if (i < 0 || i>= h || j < 0 || j > w) return;
+
+    if (i < 0 || i>= h || j < 0 || j > w) return;  //Ideal threads
+    
     float pixval=0;
     int pixcnt=0;
+    
     for (int x=-k; x<=k; x++ ) {
         for (int y=-k; y<=k; y++) {
             if (i+x < 0 || i+x >= h || j+y < 0 || j+y >= w) continue;
             pixcnt++;
-            pixval += (a[(x+i)*w+(y+j)] * kernel[(x+k)*(2*k+1)+(y+k)]);
+            pixval += (a[(x+i)*w+(y+j)] * kernel[(x+k)*(2*k+1)+(y+k)]); //pay attention to the kernel indices
         }
         //b[i*w+j] = (unsigned char)pixval / pixcnt;
         //we are not dividing by pixcnt because the Gaussian kernel is already normalized
@@ -24,7 +31,7 @@ __global__ void imgblur(const unsigned char *a, unsigned char *b, float *kernel,
 }
 
 int main() {
-    Mat image = imread("image.png", IMREAD_GRAYSCALE);
+    Mat image = imread("image.png", IMREAD_GRAYSCALE);  //reading image as input using opencv
 
     Mat small;
     resize(
@@ -33,14 +40,15 @@ int main() {
         cv::Size(224, 224)
     );
 
-    if (small.isContinuous()) {
+    if (small.isContinuous()) {  //checking whether the image tensor is stored in a contigous manner or not
         cout << "YES\n";
     }
 
     cout << "Width: " << small.cols << "\n";
     cout << "Height: " << small.rows << "\n";
-    imshow("Image", small);
-    waitKey(0);
+    
+    imshow("Image", small);  //Display of image
+    waitKey(0);  // waiting for an keyboard input to process next steps
 
     // for (int i = 0; i < small.rows; i++) {
     //     for (int j = 0; j < small.cols; j++) {
@@ -50,6 +58,7 @@ int main() {
     // }
 
 
+    //Defining Kernel/Filter
     int k=5;
     vector<float> kernel((2*k+1)*(2*k+1));
     float sigma=k, sum=0.0f;
@@ -77,6 +86,8 @@ int main() {
     cudaMemcpy(d_a, small.data, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyHostToDevice);
     cudaMemcpy(d_kernel, kernel.data(), (2*k+1)*(2*k+1)*sizeof(float), cudaMemcpyHostToDevice);
     
+
+    //kernel Launching
     dim3 block(16, 16);
     dim3 grid(
         (small.cols+block.x-1)/block.x,
@@ -87,6 +98,8 @@ int main() {
 
     cudaMemcpy(small.data, d_b, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyDeviceToHost);
     
+
+    //Final output image
     imshow("Image", small);
     waitKey(0);
 
