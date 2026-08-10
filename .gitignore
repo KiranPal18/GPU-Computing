@@ -1,3 +1,12 @@
-*
-!*.cu
-!.gitignore
+# Ignore compiled binaries and object files
+*.out
+*.exe
+*.o
+*.obj
+
+# Ignore image files
+*.png
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db

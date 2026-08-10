@@ -3,31 +3,27 @@
 
 using namespace std;
 
-//defining Kernel
+// CUDA Kernel for matrix addition
 __global__ void matadd(int *a, int *b, int *c, int h, int w) {
-    //Global index of the thread
-    int j = threadIdx.x + blockIdx.x * blockDim.x;  //column
-    int i = threadIdx.y + blockIdx.y * blockDim.y;  //row
+    // Calculate the global index for columns (x) and rows (y)
+    int j = threadIdx.x + blockIdx.x * blockDim.x;  // column index
+    int i = threadIdx.y + blockIdx.y * blockDim.y;  // row index
 
-    if (i < h && j < w) { //Make the extra threads ideal
-        c[i*w+j] = a[i*w+j] + b[i*w+j];  //Matrix is stored in linear way in memory 
+    // Boundary check to ensure threads stay within matrix dimensions
+    if (i < h && j < w) { 
+        // Matrices are stored as 1D arrays (row-major order)
+        c[i*w+j] = a[i*w+j] + b[i*w+j];  
     }
 }
 
 int main() {
     int n=1000, m=100;
-    //cin >> n >> m;
 
-
-    //You might thing that doing Matrix Addition is to take two matrix (2D Tensor) and then add the individual terms
-    //But the main problem we will be facing if we use vector<vector<int>> will simply be that the data
-    //of matrix is not stored in a contigous manner, thus making is not feasible to transfer the data to 
-    //Device(GPU)
-    //Therefore we use a 1D tensor to do the matrix additon but treat it as a row major linear representaion
-    //of a 2D tensor and this same concept can be applied to any dimension tensor
+    // To ensure contiguous memory allocation for GPU transfer, 
+    // we use a 1D vector to represent a 2D matrix (row-major order).
     vector<int> a(n*m), b(n*m), c(n*m);
 
-    //Could take any vector for simplicity I hardcoded them
+    // Initialize matrices with sample data
     for (int i=0; i<n; i++) {
         for (int j=0; j<m; j++) {
             a[i*m+j]=i*i+j;
@@ -35,33 +31,38 @@ int main() {
         }
     }
 
-    //We need pointer for the GPU's memory access
+    // Pointers for GPU device memory
     int *d_a, *d_b, *d_c;
 
-    //Now we need to allocate the memory in GPU for the vectors and transfer them from host(CPU) to device(GPU)
-    
-    //Allocating memory
+    // Allocate memory on the GPU device
     cudaMalloc(&d_a, n*m*sizeof(int));
     cudaMalloc(&d_b, n*m*sizeof(int));
     cudaMalloc(&d_c, n*m*sizeof(int));
 
-    //Data transfer form host to device
+    // Transfer data from Host (CPU) to Device (GPU)
     cudaMemcpy(d_a, a.data(), n*m*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b.data(), n*m*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_c, c.data(), n*m*sizeof(int), cudaMemcpyHostToDevice);
 
-    //Kernel launch
+    // Define 2D execution configuration: blocks and grids
     dim3 block(16, 16);
     dim3 grid(
         (m + block.x - 1) / block.x,
         (n + block.y - 1) / block.y
     );
+    
+    // Launch the kernel on the GPU
     matadd<<<grid, block>>>(d_a, d_b, d_c, n, m);
 
-    //Data transfer of the result from device to host
+    // Transfer the result back from Device (GPU) to Host (CPU)
     cudaMemcpy(c.data(), d_c, n*m*sizeof(int), cudaMemcpyDeviceToHost);
 
-    //Display the result
+    // Free GPU memory to avoid leaks
+    cudaFree(d_c);
+    cudaFree(d_a);
+    cudaFree(d_b);
+
+    // Display the result
     for (int i=0; i<n; i++) {
         for (int j=0; j<m; j++) {
             cout << c[i*m+j] << " ";

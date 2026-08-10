@@ -3,50 +3,56 @@
 
 using namespace std;
 
-//defining Kernel
+// CUDA Kernel for vector addition
 __global__ void vecadd(int *a, int *b, int *c, int n) {
-    //Global index of the thread
+    // Calculate the global index of the thread across the entire grid
     int i = threadIdx.x + blockIdx.x * blockDim.x;
-    if (i < n) { //Make the extra threads ideal
+    
+    // Boundary check to ensure the thread does not access memory out of bounds
+    if (i < n) { 
         c[i] = a[i] + b[i];
     }
 }
 
 int main() {
     int n=1000;
-    //cin >> n;
     vector<int> a(n), b(n), c(n);
 
-    //Could take any vector for simplicity I hardcoded them
+    // Initialize host vectors with sample data
     for (int i=0; i<n; i++) {
         a[i]=i*i;
         b[i]=i;
     }
 
-    //We need pointer for the GPU's memory access
+    // Pointers for GPU device memory
     int *d_a, *d_b, *d_c;
 
-    //Now we need to allocate the memory in GPU for the vectors and transfer them from host(CPU) to device(GPU)
-    
-    //Allocating memory
+    // Allocate memory on the GPU device
     cudaMalloc(&d_a, n*sizeof(int));
     cudaMalloc(&d_b, n*sizeof(int));
     cudaMalloc(&d_c, n*sizeof(int));
 
-    //Data transfer form host to device
+    // Transfer data from Host (CPU) to Device (GPU)
     cudaMemcpy(d_a, a.data(), n*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b.data(), n*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_c, c.data(), n*sizeof(int), cudaMemcpyHostToDevice);
 
-    //Kernel launch
+    // Define execution configuration: block size and grid size
     int block = 256;
     int grid = (n + block - 1) / block;
+    
+    // Launch the kernel on the GPU
     vecadd<<<grid, block>>>(d_a, d_b, d_c, n);
 
-    //Data transfer of the result from device to host
+    // Transfer the result back from Device (GPU) to Host (CPU)
     cudaMemcpy(c.data(), d_c, n*sizeof(int), cudaMemcpyDeviceToHost);
 
-    //Display the result
+    // Free GPU memory to avoid leaks
+    cudaFree(d_c);
+    cudaFree(d_a);
+    cudaFree(d_b);
+
+    // Display the result
     for (int i=0; i<n; i++) {
         cout << c[i] << " ";
     }

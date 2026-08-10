@@ -5,76 +5,79 @@
 using namespace std;
 using namespace cv;
 
-
-//Doing Blurring of an image on GPU
-
-
+// CUDA Kernel for basic image blurring (averaging)
 __global__ void imgblur(const unsigned char *a, unsigned char *b, const int k, const int h, const int w) {
+    // Global index of the thread
     int j = threadIdx.x + blockIdx.x * blockDim.x;
     int i = threadIdx.y + blockIdx.y * blockDim.y;
 
-    if (i < 0 || i>= h || j < 0 || j > w) return;  //Ideal threads
+    // Boundary check to stay within image dimensions
+    if (i < 0 || i>= h || j < 0 || j >= w) return; 
     
     int pixval=0, pixcnt=0;
     
+    // Iterate through a square window of size (2*k + 1) centered at the pixel
     for (int x=-k; x<=k; x++ ) {
         for (int y=-k; y<=k; y++) {
+            // Check boundaries for neighboring pixels
             if (i+x < 0 || i+x >= h || j+y < 0 || j+y >= w) continue;
             pixcnt++;
             pixval += a[(x+i)*w+(y+j)];
         }
-        b[i*w+j] = pixval / pixcnt;
     }
+    // Compute average value for the blur effect
+    b[i*w+j] = pixval / pixcnt;
 }
 
 int main() {
-    Mat image = imread("image.png", IMREAD_GRAYSCALE);  //reading image as input using opencv
+    // Read input image in grayscale using OpenCV
+    Mat image = imread("image.png", IMREAD_GRAYSCALE);
 
     Mat small;
+    // Resize image for consistent processing size
     resize(
         image,
         small,
         cv::Size(224, 224)
     );
  
-    if (small.isContinuous()) {  //checking whether the image tensor is stored in a contigous manner or not
+    // Check if the image memory is contiguous for CUDA transfer
+    if (small.isContinuous()) {
         cout << "YES\n";
     }
 
     cout << "Width: " << small.cols << "\n";
     cout << "Height: " << small.rows << "\n";
     
-    
-    imshow("Image", small);  //Display of image
-    waitKey(0);  // waiting for an keyboard input to process next steps
+    imshow("Image", small);
+    waitKey(0); 
 
-    // for (int i = 0; i < small.rows; i++) {
-    //     for (int j = 0; j < small.cols; j++) {
-    //         cout << (int)small.at<unsigned char>(i, j) << " ";
-    //     }
-    //     cout << "\n";
-    // }
-
+    // Pointers for GPU device memory
     unsigned char *d_a, *d_b;
     cudaMalloc((void **)&d_a, small.cols*small.rows*sizeof(unsigned char));
     cudaMalloc((void **)&d_b, small.cols*small.rows*sizeof(unsigned char));
 
+    // Transfer image data from Host (CPU) to Device (GPU)
     cudaMemcpy(d_a, small.data, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyHostToDevice);
     
-
-    //Defining Kernel/Filter
+    // Define execution configuration: 16x16 blocks
     dim3 block(16, 16);
     dim3 grid(
         (small.cols+block.x-1)/block.x,
         (small.rows+block.y-1)/block.y
     );
     
+    // Launch the blurring kernel with a radius of 5
     imgblur<<<grid, block>>>(d_a, d_b, 5, small.rows, small.cols);
 
+    // Transfer the processed image back to Host (CPU)
     cudaMemcpy(small.data, d_b, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyDeviceToHost);
-    
 
-    //Final output image
+    // Free GPU memory
+    cudaFree(d_a);
+    cudaFree(d_b);
+
+    // Display the blurred result
     imshow("Image", small);
     waitKey(0);
     return 0;

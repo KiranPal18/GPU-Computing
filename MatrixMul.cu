@@ -3,14 +3,17 @@
 
 using namespace std;
 
-//defining Kernel
+// CUDA Kernel for matrix multiplication
 __global__ void matrixmul(int *a, int *b, int *c, int h, int k, int w) {
-    //Global index of the thread
-    int j = threadIdx.x + blockIdx.x * blockDim.x;  //column
-    int i = threadIdx.y + blockIdx.y * blockDim.y;  //row
+    // Calculate global index for columns (x) and rows (y)
+    int j = threadIdx.x + blockIdx.x * blockDim.x;  // column index
+    int i = threadIdx.y + blockIdx.y * blockDim.y;  // row index
 
-    if (i < h && j < w) { //Make the extra threads ideal
+    // Boundary check to ensure threads are within matrix dimensions
+    if (i < h && j < w) { 
+        // Initialize the result cell
         c[i*w+j]=0;
+        // Compute the dot product of row i from A and column j from B
         for (int x=0; x<k; x++) {
             c[i*w+j] += a[i*k+x] * b[x*w+j];
         }
@@ -19,18 +22,12 @@ __global__ void matrixmul(int *a, int *b, int *c, int h, int k, int w) {
 
 int main() {
     int n=2, k=5, m=3;
-    //cin >> n >> k >> m;
 
-
-    //You might thing that doing Matrix Multiplication of is to take two matrix (2D Tensor) and then add the individual terms
-    //But the main problem we will be facing if we use vector<vector<int>> will simply be that the data
-    //of matrix is not stored in a contigous manner, thus making is not feasible to transfer the data to 
-    //Device(GPU)
-    //Therefore we use a 1D tensor to do the matrix additon but treat it as a row major linear representaion
-    //of a 2D tensor and this same concept can be applied to any dimension tensor
+    // Using 1D arrays to represent 2D matrices for contiguous memory allocation,
+    // which is required for efficient transfer to the GPU.
     vector<int> a(n*k), b(k*m), c(n*m);
 
-    //Could take any vector for simplicity I hardcoded them
+    // Initialize matrices with sample data
     for (int i=0; i<n; i++) {
         for (int j=0; j<k; j++) {
             a[i*k+j]=i*i+j;
@@ -42,38 +39,39 @@ int main() {
         }
     }
 
-    //We need pointer for the GPU's memory access
+    // Pointers for GPU device memory
     int *d_a, *d_b, *d_c;
 
-    //Now we need to allocate the memory in GPU for the vectors and transfer them from host(CPU) to device(GPU)
-    
-    //Allocating memory
+    // Allocate memory on the GPU device
     cudaMalloc(&d_a, n*k*sizeof(int));
     cudaMalloc(&d_b, k*m*sizeof(int));
     cudaMalloc(&d_c, n*m*sizeof(int));
 
-    //Data transfer form host to device
+    // Transfer data from Host (CPU) to Device (GPU)
     cudaMemcpy(d_a, a.data(), n*k*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b.data(), k*m*sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(d_c, c.data(), n*m*sizeof(int), cudaMemcpyHostToDevice);
 
-    //Kernel launch
-
-    //We need to define our custom kernel blocks and grid as we are doing operation in 2D tensor hence we divide the Tensor in each dimension of it
+    // Define 2D execution configuration: blocks and grids
     dim3 block(16, 16);
     dim3 grid(
         (m + block.x - 1) / block.x,
         (n + block.y - 1) / block.y
     );
 
+    // Launch the kernel on the GPU
     matrixmul<<<grid, block>>>(d_a, d_b, d_c, n, k, m);
 
-    //Data transfer of the result from device to host
+    // Transfer the result back from Device (GPU) to Host (CPU)
     cudaMemcpy(c.data(), d_c, n*m*sizeof(int), cudaMemcpyDeviceToHost);
 
-    //Display the result
-    cout << "A\n";
+    // Free GPU memory to avoid leaks
+    cudaFree(d_c);
+    cudaFree(d_a);
+    cudaFree(d_b);
 
+    // Display results
+    cout << "A\n";
     for (int i=0; i<n; i++) {
         for (int j=0; j<k; j++) {
             cout << a[i*k+j] << " ";
@@ -82,7 +80,6 @@ int main() {
     }
 
     cout << "B\n";
-
     for (int i=0; i<k; i++) {
         for (int j=0; j<m; j++) {
             cout << b[i*m+j] << " ";
@@ -91,7 +88,6 @@ int main() {
     }
 
     cout << "C\n";
-
     for (int i=0; i<n; i++) {
         for (int j=0; j<m; j++) {
             cout << c[i*m+j] << " ";
