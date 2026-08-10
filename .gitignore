@@ -4,6 +4,14 @@
 *.o
 *.obj
 
+# Ignore specific extension-less CUDA executables
+Blur
+GaussBlur
+MatrixAdd
+MatrixMul
+VectorAdd
+GBlur
+
 # Ignore image files
 *.png
 
