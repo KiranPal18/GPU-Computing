@@ -11,6 +11,7 @@ MatrixAdd
 MatrixMul
 VectorAdd
 GBlur
+Sync
 
 # Ignore image files
 *.png
