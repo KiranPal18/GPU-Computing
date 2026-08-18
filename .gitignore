@@ -12,6 +12,8 @@ MatrixMul
 VectorAdd
 GBlur
 Sync
+Syncdev
+InfoCheck
 
 # Ignore image files
 *.png
