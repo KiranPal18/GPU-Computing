@@ -7,7 +7,13 @@ using namespace std;
 #define t_col 32 // Width of the tile for matrix C
 #define t_k   16 // Step size along the inner dimension (K)
 
-__global__ void Tiled_Matmul (const float * a, const float * b ,float *c, int n, int k, int m) {
+//Coarsening allows a single thread to compute multiple output elements (across the columns).
+#define coarse_factor 2 
+
+//Instead of one thread calculating one element of C, one thread calculates 'coarse_factor' elements.
+//This increases the work per thread, improves the ratio of arithmetic to memory access.
+
+__global__ void Tiled_Matmul (const float * a, const float * b ,float *q, int n, int k, int m) {
     // Use shared memory to cache matrix tiles and reduce global memory access latency
     
     // Shared memory must have a fixed size at compile time or be declared as extern
@@ -19,14 +25,18 @@ __global__ void Tiled_Matmul (const float * a, const float * b ,float *c, int n,
     extern __shared__ float tile_b[][t_col];
 
     // Calculate global and local thread indices
-    int ty = threadIdx.y, tx = threadIdx.x;
-    int by = blockIdx.y, bx = blockIdx.x;
+    int tx = threadIdx.x, ty = threadIdx.y;
+    int bx = blockIdx.x, by = blockIdx.y;
 
-    int row = by*t_row+ty, col = bx*t_col+tx;
+    int row = by*t_row+ty;
+    int col_start = bx*t_col*coarse_factor+tx;
     
     // Determine the number of tiles needed to cover the inner dimension k
     int phase = (k + t_k - 1)/ t_k;
-    float p=0.0f;
+
+    // Accumulators for the coarsened results. Each thread stores multiple partial sums.
+    float p[coarse_factor] = {0.0f};
+
     for (int i=0 ;i<phase; i++) {
 
         if (ty < t_row && tx < t_k) {
@@ -39,29 +49,47 @@ __global__ void Tiled_Matmul (const float * a, const float * b ,float *c, int n,
             }
         }
 
-        if (ty < t_k && tx < t_col) {
-            // Load tile from global memory to shared memory with boundary checking
-            if (col < m && i * t_k + ty < k) {
-                tile_b[ty][tx] = b[(i*t_k+ty)*m + col];
-            }
-            else {
-                tile_b[ty][tx]=0.0;
-            }
-        }
+        /* 
+           COARSENED LOOP:
+           Instead of loading a single tile of B and computing, we repeat the process 
+           'coarse_factor' times. We reuse the current tile_a for multiple different 
+           tiles of B (shifting the column offset).
+        */
 
-        // Ensure all threads have finished loading the tile before starting computation
-        __syncthreads();
-        if (ty < t_row && tx < t_col) {
-            for (int x = 0; x < t_k; x++) {
-                p += tile_a[ty][x] * tile_b[x][tx];
+        for (int c=0; c<coarse_factor; c++) {
+            if (ty < t_k && tx < t_col) {
+                // Load tile from global memory to shared memory with boundary checking
+                int col = col_start + t_col*c;
+                if (col < m && i * t_k + ty < k) {
+                    tile_b[ty][tx] = b[(i*t_k+ty)*m + col];
+                }
+                else {
+                    tile_b[ty][tx]=0.0;
+                }
             }
-        }
 
-        // Ensure all threads have finished computation before loading the next tile
-        __syncthreads();
+            // Synchronize to ensure tile_b is fully loaded before starting the dot product.
+            __syncthreads();
+
+            if (ty < t_row && tx < t_col) {
+                for (int x = 0; x < t_k; x++) {
+                    p[c] += tile_a[ty][x] * tile_b[x][tx];
+                }
+            }
+
+            // Ensure all threads have finished computation before loading the next tile
+            // Synchronize to ensure all threads finished using tile_b before the next coarse step 
+            // or the next phase loads new data into shared memory.
+            __syncthreads();
+        }
     }
-    if (row < n && col < m){
-        c[col + row * m] = p;
+
+    // Store the coarsened results back to global memory at the respective shifted column offsets.
+    for (int c=0; c<coarse_factor; c++) {
+        int col = col_start + t_col*c;
+        if (row < n && col < m){
+            q[col + row * m] = p[c];
+        }
     }
 }
 
@@ -100,7 +128,7 @@ int main() {
     // Define 2D execution configuration: blocks and grids
     dim3 block(t_col, t_row);
     dim3 grid(
-        (m + block.x - 1) / block.x,
+        (m + (block.x*coarse_factor) - 1) / (block.x*coarse_factor),
         (n + block.y - 1) / block.y
     );
 
