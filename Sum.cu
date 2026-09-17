@@ -46,6 +46,43 @@ __global__ void Tile_CudaSum(int *a, int n, int *ans) {
     }
 }
 
+// Optimized reduction kernel using shared memory and warp shuffles
+__global__ void Warp_Tile_CudaSum(int *a, int n, int *ans) {
+    extern __shared__ int tile[]; // Dynamic shared memory allocation
+    int idx = threadIdx.x;
+    float localSum = 0.0f;
+    
+    // Grid-stride loop to handle arrays larger than grid size
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += blockDim.x * gridDim.x) {
+        localSum += a[i];
+    }
+    tile[idx] = localSum; // Store partial sum in shared memory
+    __syncthreads();
+
+    // Perform reduction in shared memory until only one warp (32 threads) remains
+    int stride = blockDim.x / 2;
+    while (stride >= 32) {
+        if (idx < stride) {
+            tile[idx] += tile[idx + stride];
+        }
+        __syncthreads();
+        stride /= 2;
+    }
+    int val = 0;
+    if (idx < 32) {
+        // Load remaining values from shared memory into registers
+        val = tile[idx]; 
+        
+        // Use warp shuffle for final reduction (no __syncthreads needed within a warp)
+        for (int offset = 16; offset > 0; offset /= 2) {
+            val += __shfl_down_sync(0xffffffff, val, offset);
+        }
+    }
+    if (idx == 0) {
+        atomicAdd(ans, val); // Add block's final sum to global total
+    }
+}
+
 int main() {
     int n = 17;
     int sum = 0;
@@ -75,7 +112,7 @@ int main() {
     dim3 grid((n+block.x-1) / block.x);
     
     // Launch kernel with dynamic shared memory size
-    Tile_CudaSum<<<grid, block, blockDim.x*sizeof(int)>>>(d_a, n, ans);
+    Warp_Tile_CudaSum<<<grid, block, 16*sizeof(int)>>>(d_a, n, ans);
 
     int gans=0;
     cudaDeviceSynchronize();
