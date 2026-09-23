@@ -2,7 +2,7 @@
 #include <cuda_runtime.h>
 #include <opencv2/opencv.hpp>
 
-using namespace std;
+using namespace std;p
 using namespace cv;
 
 // CUDA Kernel for basic image blurring (averaging)
