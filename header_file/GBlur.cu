@@ -1,5 +1,8 @@
+#include <bits/stdc++.h>
 #include "../cuda_check.h"
 #include "GBlur.h"
+
+using namespace std;
 
 // CUDA Kernel for Gaussian blur implemented in a separate file
 __global__ void imgblur(const unsigned char *a, unsigned char *b, float *kernel, const int k, const int h, const int w) {

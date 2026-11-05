@@ -17,7 +17,6 @@ __global__ void Helper(const int *a, int *b,const int n) {
         b[i] = a[i] * (i+1);
     }
 
-
     // For the phase 2 work, we need the phase 1 of work to be completed first.
     // We call __syncthreads() outside of any conditional (if) block because all threads 
     // in the block must reach this point. If it were inside an if block, threads that 

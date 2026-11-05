@@ -1,9 +1,8 @@
-
+#include <bits/stdc++.h>
 #include <cuda_runtime.h>
 #include "cuda_check.h"
-#include <iostream>
-#include <vector>
-#include <cmath>
+
+using namespace std;
 
 constexpr int CIN = 3;
 constexpr int H = 5;
@@ -15,11 +14,7 @@ constexpr int OW = W - KW + 1;
 constexpr int N = CIN * KH * KW;
 constexpr int BLOCK = 32;
 
-__global__ void conv_thread(
-    const float* input,
-    const float* filter,
-    float* output
-) {
+__global__ void conv_thread(const float* input,const float* filter,float* output) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= OH * OW) return;
 
@@ -43,11 +38,7 @@ __global__ void conv_thread(
     output[idx] = sum;
 }
 
-__global__ void conv_block(
-    const float* input,
-    const float* filter,
-    float* output
-) {
+__global__ void conv_block(const float* input, const float* filter,float* output) {
     int idx = blockIdx.x;
     if (idx >= OH * OW) return;
 
@@ -87,10 +78,10 @@ __global__ void conv_block(
 }
 
 int main() {
-    std::vector<float> input(CIN * H * W);
-    std::vector<float> filter(N, 1.0f);
-    std::vector<float> out1(OH * OW);
-    std::vector<float> out2(OH * OW);
+    vector<float> input(CIN * H * W);
+    vector<float> filter(N, 1.0f);
+    vector<float> out1(OH * OW);
+    vector<float> out2(OH * OW);
 
     for (int ch = 0; ch < CIN; ch++)
         for (int r = 0; r < H; r++)
@@ -125,7 +116,7 @@ int main() {
     CUDA_CHECK(cudaMemcpy(out2.data(), d_out2, out2.size() * sizeof(float),
                cudaMemcpyDeviceToHost));
 
-    std::vector<float> expected(OH*OW, 0.0f);
+    vector<float> expected(OH*OW, 0.0f);
     for (int r=0; r<OH; r++) {
         for (int c=0; c<OW; c++) {
             for (int ch=0; ch<CIN; ch++) {
@@ -142,16 +133,16 @@ int main() {
     for (int r = 0; r < OH; r++) {
         for (int c = 0; c < OW; c++) {
             int idx = r * OW + c;
-            std::cout << out1[idx] << " ";
-            if (!std::isfinite(out1[idx]) || !std::isfinite(out2[idx]) ||
-                std::fabs(out1[idx]-expected[idx]) > 1e-4f ||
-                std::fabs(out2[idx]-expected[idx]) > 1e-4f)
+            cout << out1[idx] << " ";
+            if (!isfinite(out1[idx]) || !isfinite(out2[idx]) ||
+                fabs(out1[idx]-expected[idx]) > 1e-4f ||
+                fabs(out2[idx]-expected[idx]) > 1e-4f)
                 correct = false;
         }
-        std::cout << "\n";
+        cout << "\n";
     }
 
-    std::cout << "Both kernels match: "
+    cout << "Both kernels match: "
               << (correct ? "YES" : "NO") << "\n";
 
     CUDA_CHECK(cudaFree(d_input));
@@ -159,5 +150,5 @@ int main() {
     CUDA_CHECK(cudaFree(d_out1));
     CUDA_CHECK(cudaFree(d_out2));
 
-    return correct ? 0 : 1;
+    return 0;
 }

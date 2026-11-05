@@ -1,14 +1,10 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
 #include "cuda_check.h"
-#ifndef CUDA_KERNEL_TEST
 #include <opencv2/opencv.hpp>
-#endif
 
 using namespace std;
-#ifndef CUDA_KERNEL_TEST
 using namespace cv;
-#endif
 
 // CUDA Kernel for basic image blurring (averaging)
 __global__ void imgblur(const unsigned char *a, unsigned char *b, const int k, const int h, const int w) {
@@ -34,7 +30,6 @@ __global__ void imgblur(const unsigned char *a, unsigned char *b, const int k, c
     b[i*w+j] = pixval / pixcnt;
 }
 
-#ifndef CUDA_KERNEL_TEST
 int main(int argc, char **argv) {
     // Read input image in grayscale using OpenCV
     string path=argc>1 ? argv[1] : "image.png";
@@ -97,4 +92,3 @@ int main(int argc, char **argv) {
     waitKey(0);
     return 0;
 }
-#endif
