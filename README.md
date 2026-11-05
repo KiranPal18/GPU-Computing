@@ -66,4 +66,4 @@ This repository maps out a continuous learning progression. Scripts and projects
 - **Memory Management:** Moving data between the CPU (host) and GPU (device) using `cudaMalloc` and `cudaMemcpy`.
 - **Parallel Mathematics:** Mapping 2D grids and blocks to row-major matrices for vector and matrix operations.
 - **Applied Parallelism (Image Processing):** Utilizing GPU convolution for operations like Gaussian Blurs.
-- **Advanced Optimizations (Ongoing):** Exploring Shared memory, tiled matrix multiplication, memory coalescing, CUDA streams, and kernel synchronization.
+- **Advanced Optimization:** Exploring Shared memory, tiled matrix multiplication, memory coalescing, CUDA streams, and kernel synchronization.
