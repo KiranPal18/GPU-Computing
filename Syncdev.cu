@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
@@ -21,17 +22,17 @@ int main() {
 
     // Initialize array 'a'
     for (int i=0; i<n; i++) {
-        a[i] = ((i+2) * (i+1) / 2);
+        a[i] = i % 10; // exp(0)..exp(9) fit inside an int
     }
 
     int *d_a, *d_b;
 
     // Allocate memory on the GPU device
-    cudaMalloc((void **) &d_a, n*sizeof(int));
-    cudaMalloc((void **) &d_b, n*sizeof(int));
+    CUDA_CHECK(cudaMalloc((void **) &d_a, n*sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void **) &d_b, n*sizeof(int)));
 
     // Copy data from host memory to device memory
-    cudaMemcpy(d_a, a.data(), n*sizeof(int), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, a.data(), n*sizeof(int), cudaMemcpyHostToDevice));
 
     // Define execution configuration (block and grid size)
     dim3 block(16);
@@ -39,22 +40,23 @@ int main() {
 
     // Launch the CUDA kernel asynchronously
     Helper<<<grid, block>>>(d_a, d_b, n);
+    CUDA_CHECK(cudaGetLastError());
 
     cout << "Kernel Started...!\n";
 
     // Force the CPU to wait until all GPU tasks are completed.
     // Without this, the "Kernel Completed" message might print before the kernel finishes
     // because kernel launches are non-blocking.
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
     
     cout << "Kernel Completed...!\n";
 
     // Copy the result back from device memory to host memory
-    cudaMemcpy(b.data(), d_b, n*sizeof(int), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(b.data(), d_b, n*sizeof(int), cudaMemcpyDeviceToHost));
 
     // Free GPU resources
-    cudaFree(d_a);
-    cudaFree(d_b);
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
 
     // Print the resulting array
     for (int i=0; i<n ;i++) {

@@ -3,6 +3,7 @@
 *.exe
 *.o
 *.obj
+.vscode
 
 # Ignore specific extension-less CUDA executables
 Blur
@@ -11,6 +12,7 @@ MatrixAdd
 MatrixMul
 VectorAdd
 GBlur
+tile_conv
 Sync
 Syncdev
 InfoCheck
@@ -18,7 +20,6 @@ Tile_Matmul
 Coarsed_Tile_matmul
 Sum
 Transpose
-DynamicBlock.cu
 
 # Ignore image files
 *.png

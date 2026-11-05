@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
@@ -14,7 +15,7 @@ __global__ void Tiled_Matmul (const float * a, const float * b ,float *c, int n,
     __shared__ float tile_a[t_row][t_k];
     
     // Extern shared memory is used for dynamic allocation. Note that all extern declarations 
-    // in a block share the same memory region; thus, only one variable can be declared this way.
+    // in a block alias the same memory region; partition that allocation if using multiple arrays.
     // __shared__ float tile_b[t_k][t_col];
     extern __shared__ float tile_b[][t_col];
 
@@ -88,14 +89,13 @@ int main() {
     float *d_a, *d_b, *d_c;
 
     // Allocate memory on the GPU device
-    cudaMalloc(&d_a, n*k*sizeof(float));
-    cudaMalloc(&d_b, k*m*sizeof(float));
-    cudaMalloc(&d_c, n*m*sizeof(float));
+    CUDA_CHECK(cudaMalloc(&d_a, n*k*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_b, k*m*sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&d_c, n*m*sizeof(float)));
 
     // Transfer data from Host (CPU) to Device (GPU)
-    cudaMemcpy(d_a, a.data(), n*k*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, b.data(), k*m*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_c, c.data(), n*m*sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, a.data(), n*k*sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_b, b.data(), k*m*sizeof(float), cudaMemcpyHostToDevice));
 
     // Define 2D execution configuration: blocks and grids
     dim3 block(t_col, t_row);
@@ -110,14 +110,15 @@ int main() {
 
     // Launch the kernel on the GPU
     Tiled_Matmul<<<grid, block, shared_mem>>>(d_a, d_b, d_c, n, k, m);
+    CUDA_CHECK(cudaGetLastError());
 
     // Transfer the result back from Device (GPU) to Host (CPU)
-    cudaMemcpy(c.data(), d_c, n*m*sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(c.data(), d_c, n*m*sizeof(float), cudaMemcpyDeviceToHost));
 
     // Free GPU memory to avoid leaks
-    cudaFree(d_c);
-    cudaFree(d_a);
-    cudaFree(d_b);
+    CUDA_CHECK(cudaFree(d_c));
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
 
     // Display results
     cout << "A\n";

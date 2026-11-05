@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
@@ -35,14 +36,13 @@ int main() {
     int *d_a, *d_b, *d_c;
 
     // Allocate memory on the GPU device
-    cudaMalloc(&d_a, n*m*sizeof(int));
-    cudaMalloc(&d_b, n*m*sizeof(int));
-    cudaMalloc(&d_c, n*m*sizeof(int));
+    CUDA_CHECK(cudaMalloc(&d_a, n*m*sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_b, n*m*sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_c, n*m*sizeof(int)));
 
     // Transfer data from Host (CPU) to Device (GPU)
-    cudaMemcpy(d_a, a.data(), n*m*sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, b.data(), n*m*sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_c, c.data(), n*m*sizeof(int), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, a.data(), n*m*sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_b, b.data(), n*m*sizeof(int), cudaMemcpyHostToDevice));
 
     // Define 2D execution configuration: blocks and grids
     dim3 block(16, 16);
@@ -53,14 +53,15 @@ int main() {
     
     // Launch the kernel on the GPU
     matadd<<<grid, block>>>(d_a, d_b, d_c, n, m);
+    CUDA_CHECK(cudaGetLastError());
 
     // Transfer the result back from Device (GPU) to Host (CPU)
-    cudaMemcpy(c.data(), d_c, n*m*sizeof(int), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(c.data(), d_c, n*m*sizeof(int), cudaMemcpyDeviceToHost));
 
     // Free GPU memory to avoid leaks
-    cudaFree(d_c);
-    cudaFree(d_a);
-    cudaFree(d_b);
+    CUDA_CHECK(cudaFree(d_c));
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
 
     // Display the result
     for (int i=0; i<n; i++) {

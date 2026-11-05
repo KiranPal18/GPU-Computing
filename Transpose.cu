@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
@@ -29,9 +30,9 @@ __global__ void Transpose(float *a, float *b, const int n, const int m) {
     // Wait for all threads in the block to finish loading the tile into shared memory
     __syncthreads();
 
-    // Swap coordinates to prepare for transposed write
-    y = blockIdx.x * blockDim.x + threadIdx.x;
-    x = blockIdx.y * blockDim.y + threadIdx.y;
+    // Square blocks: exchange local coordinates and the output tile position
+    y = blockIdx.y * blockDim.y + threadIdx.x;
+    x = blockIdx.x * blockDim.x + threadIdx.y;
     
     // 2. Write from shared memory back to global memory (Coalesced Write)
     // By reading from the tile in a transposed manner (swapping threadIdx.x/y),
@@ -57,19 +58,25 @@ int main () {
     }
 
 
-    float *d_a, *d_b;
-    cudaMallocManaged(&d_a, n*m*sizeof(float));
-    cudaMallocManaged(&d_b, n*m*sizeof(float));
+    vector<float> expected(n*m);
+    for (int i=0; i<n; i++) {
+        for (int j=0; j<m; j++) expected[j*n+i]=a[i*m+j];
+    }
 
-    cudaMemcpy(d_a, a.data(), n*m*sizeof(float), cudaMemcpyHostToDevice);
+    float *d_a, *d_b;
+    CUDA_CHECK(cudaMallocManaged(&d_a, n*m*sizeof(float)));
+    CUDA_CHECK(cudaMallocManaged(&d_b, n*m*sizeof(float)));
+
+    CUDA_CHECK(cudaMemcpy(d_a, a.data(), n*m*sizeof(float), cudaMemcpyHostToDevice));
 
     dim3 block(32, 32);
     dim3 grid((m + 31) / 32, (n + 31) / 32);
 
     Transpose<<<grid, block, 32 * 33 * sizeof(float)>>>(d_a, d_b, n, m);
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
 
-    cudaMemcpy(a.data(), d_b, n*m*sizeof(float), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(a.data(), d_b, n*m*sizeof(float), cudaMemcpyDeviceToHost));
 
     cout << "A Transpose: \n";
     for (int i=0; i<m; i++) {
@@ -79,8 +86,8 @@ int main () {
         cout << "\n";
     }
 
-    cudaFree(d_a);
-    cudaFree(d_b);
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
 
-    return 0;
+    return a == expected ? 0 : 1;
 }

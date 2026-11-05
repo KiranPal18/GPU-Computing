@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
@@ -41,21 +42,22 @@ int main() {
     int *d_a, *d_b;
 
     //Allocate memory on the device
-    cudaMalloc((void **) &d_a, n*sizeof(int));
-    cudaMalloc((void **) &d_b, n*sizeof(int));
+    CUDA_CHECK(cudaMalloc((void **) &d_a, n*sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void **) &d_b, n*sizeof(int)));
 
     //Copy the data to device from the host
-    cudaMemcpy(d_a, a.data(), n*sizeof(int), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, a.data(), n*sizeof(int), cudaMemcpyHostToDevice));
 
     //Launch the kernel
     Helper<<<((n+32-1)/32), 32>>>(d_a, d_b, n);
+    CUDA_CHECK(cudaGetLastError());
 
     //Copy the data back to host
-    cudaMemcpy(b.data(), d_b, n*sizeof(int), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(b.data(), d_b, n*sizeof(int), cudaMemcpyDeviceToHost));
 
     //Free up the memory allocated in the device
-    cudaFree(d_a);
-    cudaFree(d_b);
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
 
     //Display the results
     for (int i=0; i<n; i++) {

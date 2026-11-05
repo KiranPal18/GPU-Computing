@@ -1,21 +1,24 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
 // Simple reduction kernel using global memory
 __global__ void CudaSum(int *a, int n, int * ans) {
     int i = threadIdx.x + blockDim.x*blockIdx.x;  // Calculate global thread index
-    int stride = blockDim.x / 2;  // Initial stride for tree-based reduction
-    while (stride > 0) {
-        if (threadIdx.x < stride && i+stride<n) {
-            a[i] += a[i+stride]; // Sum elements in pairs
+    int active = blockDim.x;  // Number of values still being reduced
+    while (active > 1) {
+        int next = (active+1)/2;
+        if (threadIdx.x < active/2 && i+next < n) {
+            a[i] += a[i+next];
         }
-        __syncthreads(); // Sync threads before reducing stride
-        stride /= 2;
+        __syncthreads();
+        active = next;
     }
-    if (threadIdx.x == 0) {
-        atomicAdd(ans, a[0]); // Add block result to global total
+    int start = blockIdx.x*blockDim.x;
+    if (threadIdx.x == 0 && start < n) {
+        atomicAdd(ans, a[start]); // Each block contributes its own first element
     }
 }
 
@@ -23,7 +26,7 @@ __global__ void CudaSum(int *a, int n, int * ans) {
 __global__ void Tile_CudaSum(int *a, int n, int *ans) {
     extern __shared__ int tile[]; // Dynamic shared memory allocation
     int idx = threadIdx.x;
-    float localSum = 0.0f;
+    int localSum = 0;
     
     // Grid-stride loop to handle arrays larger than grid size
     for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += blockDim.x * gridDim.x) {
@@ -33,13 +36,14 @@ __global__ void Tile_CudaSum(int *a, int n, int *ans) {
     __syncthreads();
 
     // Perform reduction in shared memory
-    int stride = blockDim.x / 2;
-    while (stride > 0) {
-        if (idx < stride) {
-            tile[idx] += tile[idx + stride];
+    int active = blockDim.x;
+    while (active > 1) {
+        int next = (active+1)/2;
+        if (idx < active/2) {
+            tile[idx] += tile[idx+next];
         }
         __syncthreads();
-        stride /= 2;
+        active = next;
     }
     if (idx == 0) {
         atomicAdd(ans, tile[0]); // Add block's shared sum to global total
@@ -50,7 +54,7 @@ __global__ void Tile_CudaSum(int *a, int n, int *ans) {
 __global__ void Warp_Tile_CudaSum(int *a, int n, int *ans) {
     extern __shared__ int tile[]; // Dynamic shared memory allocation
     int idx = threadIdx.x;
-    float localSum = 0.0f;
+    int localSum = 0;
     
     // Grid-stride loop to handle arrays larger than grid size
     for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += blockDim.x * gridDim.x) {
@@ -60,22 +64,23 @@ __global__ void Warp_Tile_CudaSum(int *a, int n, int *ans) {
     __syncthreads();
 
     // Perform reduction in shared memory until only one warp (32 threads) remains
-    int stride = blockDim.x / 2;
-    while (stride >= 32) {
-        if (idx < stride) {
-            tile[idx] += tile[idx + stride];
+    int active = blockDim.x;
+    while (active > 32) {
+        int next = (active+1)/2;
+        if (idx < active/2) {
+            tile[idx] += tile[idx+next];
         }
         __syncthreads();
-        stride /= 2;
+        active = next;
     }
     int val = 0;
-    if (idx < 32) {
-        // Load remaining values from shared memory into registers
-        val = tile[idx]; 
-        
-        // Use warp shuffle for final reduction (no __syncthreads needed within a warp)
+    // Only participating lanes belong to the shuffle mask, including short blocks.
+    unsigned mask = __ballot_sync(__activemask(), idx < active);
+    if (idx < active) {
+        val = tile[idx];
         for (int offset = 16; offset > 0; offset /= 2) {
-            val += __shfl_down_sync(0xffffffff, val, offset);
+            int other = __shfl_down_sync(mask, val, offset);
+            if (idx+offset < active) val += other;
         }
     }
     if (idx == 0) {
@@ -101,11 +106,13 @@ int main() {
 
     // Allocate GPU memory
     int *d_a, *ans;
-    cudaMalloc(&d_a, n*sizeof(int));
-    cudaMalloc(&ans, sizeof(int));
+    CUDA_CHECK(cudaMalloc(&d_a, n*sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&ans, sizeof(int)));
     
+    CUDA_CHECK(cudaMemset(ans, 0, sizeof(int)));
+
     // Copy data from Host to Device
-    cudaMemcpy(d_a, a.data(), n*sizeof(int), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, a.data(), n*sizeof(int), cudaMemcpyHostToDevice));
 
     // Define execution configuration
     dim3 block(16);
@@ -113,15 +120,17 @@ int main() {
     
     // Launch kernel with dynamic shared memory size
     Warp_Tile_CudaSum<<<grid, block, 16*sizeof(int)>>>(d_a, n, ans);
+    CUDA_CHECK(cudaGetLastError());
 
     int gans=0;
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
     // Copy result back from Device to Host
-    cudaMemcpy(&gans, ans, sizeof(int), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(&gans, ans, sizeof(int), cudaMemcpyDeviceToHost));
 
     cout << "GPU is: " << gans << "\n";
     cout << "expected is: " << sum << "\n";
 
-    cudaFree(d_a);
-    return 0;
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(ans));
+    return gans == sum ? 0 : 1;
 }

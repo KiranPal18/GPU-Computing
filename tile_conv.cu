@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
@@ -68,22 +69,22 @@ int main() {
     
     // create a 3x3 averaging filter
     float h_filter[2*filter_radius+1][2*filter_radius+1];
-    for(int i = 0; i < 3; i++) {
-        for(int j = 0; j < 3; j++) {
-            h_filter[i][j] = exp(i*i+j*j)/2;
+    for(int i = 0; i < 2*filter_radius+1; i++) {
+        for(int j = 0; j < 2*filter_radius+1; j++) {
+            h_filter[i][j] = 1.0f/((2*filter_radius+1)*(2*filter_radius+1));
         }
     }
 
     // 3. copy filter to constant memory on the device
-    cudaMemcpyToSymbol(kfilter_d, h_filter, sizeof(h_filter));
+    CUDA_CHECK(cudaMemcpyToSymbol(kfilter_d, h_filter, sizeof(h_filter)));
 
     // 4. allocate device memory
     float *d_input, *d_output;
-    cudaMalloc((void**)&d_input, inbytes);
-    cudaMalloc((void**)&d_output, outbytes);
+    CUDA_CHECK(cudaMalloc((void**)&d_input, inbytes));
+    CUDA_CHECK(cudaMalloc((void**)&d_output, outbytes));
 
     // 5. copy input data from host to device
-    cudaMemcpy(d_input, h_input.data(), inbytes, cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_input, h_input.data(), inbytes, cudaMemcpyHostToDevice));
 
     // 6. define grid and block dimensions
     // block size must match in_tile_dim (4x4)
@@ -97,12 +98,27 @@ int main() {
 
     // 7. launch the kernel
     conv2dtiledconstkernel<<<gridsize, blocksize>>>(d_input, d_output, width, height, outwidth, outheight);
+    CUDA_CHECK(cudaGetLastError());
     
     // check for kernel launch errors
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     // 8. copy results back to host
-    cudaMemcpy(h_output.data(), d_output, outbytes, cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_output.data(), d_output, outbytes, cudaMemcpyDeviceToHost));
+
+    bool correct=true;
+    for (int r=0; r<outheight; r++) {
+        for (int c=0; c<outwidth; c++) {
+            float expected=0.0f;
+            for (int i=0; i<2*filter_radius+1; i++) {
+                for (int j=0; j<2*filter_radius+1; j++) {
+                    expected += h_input[(r+i)*width+c+j]*h_filter[i][j];
+                }
+            }
+            float value=h_output[r*outwidth+c];
+            if (!isfinite(value) || fabs(value-expected)>1e-4f) correct=false;
+        }
+    }
 
     // 9. verify and print results
     cout << "\noutput matrix (" << outwidth << "x" << outheight << "):\n";
@@ -114,8 +130,8 @@ int main() {
     }
 
     // 10. clean up
-    cudaFree(d_input);
-    cudaFree(d_output);
+    CUDA_CHECK(cudaFree(d_input));
+    CUDA_CHECK(cudaFree(d_output));
 
-    return 0;
+    return correct ? 0 : 1;
 }

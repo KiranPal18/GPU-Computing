@@ -1,9 +1,14 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
+#ifndef CUDA_KERNEL_TEST
 #include <opencv2/opencv.hpp>
+#endif
 
 using namespace std;
+#ifndef CUDA_KERNEL_TEST
 using namespace cv;
+#endif
 
 // CUDA Kernel for Gaussian blurring of an image
 __global__ void imgblur(const unsigned char *a, unsigned char *b, float *kernel, const int k, const int h, const int w) {
@@ -15,25 +20,32 @@ __global__ void imgblur(const unsigned char *a, unsigned char *b, float *kernel,
     if (i < 0 || i>= h || j < 0 || j >= w) return; 
     
     float pixval=0;
-    int pixcnt=0;
+    float weight_sum=0.0f;
     
     // Iterate through the Gaussian kernel window
     for (int x=-k; x<=k; x++ ) {
         for (int y=-k; y<=k; y++) {
             // Check boundaries for neighboring pixels
             if (i+x < 0 || i+x >= h || j+y < 0 || j+y >= w) continue;
-            pixcnt++;
+            weight_sum += kernel[(x+k)*(2*k+1)+(y+k)];
             // Apply weight from the Gaussian kernel
             pixval += (a[(x+i)*w+(y+j)] * kernel[(x+k)*(2*k+1)+(y+k)]); 
         }
-        // The Gaussian kernel is already normalized, so we don't divide by pixcnt
-        b[i*w+j] = (unsigned char)pixval;
     }
+    // Renormalize at the edges so a constant image keeps the same brightness.
+    b[i*w+j] = (unsigned char)fminf(255.0f, fmaxf(0.0f, floorf(pixval/weight_sum+0.5f)));
 }
 
-int main() {
+#ifndef CUDA_KERNEL_TEST
+int main(int argc, char **argv) {
     // Read input image in grayscale using OpenCV
-    Mat image = imread("image.png", IMREAD_GRAYSCALE);
+    string path=argc>1 ? argv[1] : "image.png";
+    Mat image = imread(path, IMREAD_GRAYSCALE);
+
+    if (image.empty()) {
+        cerr << "Could not read " << path << "\n";
+        return 1;
+    }
 
     Mat small;
     // Resize image for consistent processing size
@@ -42,6 +54,8 @@ int main() {
         small,
         cv::Size(224, 224)
     );
+
+    if (!small.isContinuous()) small = small.clone();
 
     // Check if the image memory is contiguous for CUDA transfer
     if (small.isContinuous()) {
@@ -77,13 +91,13 @@ int main() {
     // Pointers for GPU device memory
     unsigned char *d_a, *d_b;
     float *d_kernel;
-    cudaMalloc((void **)&d_a, small.cols*small.rows*sizeof(unsigned char));
-    cudaMalloc((void **)&d_b, small.cols*small.rows*sizeof(unsigned char));
-    cudaMalloc((void **)&d_kernel, (2*k+1)*(2*k+1)*sizeof(float));
+    CUDA_CHECK(cudaMalloc((void **)&d_a, small.cols*small.rows*sizeof(unsigned char)));
+    CUDA_CHECK(cudaMalloc((void **)&d_b, small.cols*small.rows*sizeof(unsigned char)));
+    CUDA_CHECK(cudaMalloc((void **)&d_kernel, (2*k+1)*(2*k+1)*sizeof(float)));
 
     // Transfer image and kernel data from Host (CPU) to Device (GPU)
-    cudaMemcpy(d_a, small.data, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_kernel, kernel.data(), (2*k+1)*(2*k+1)*sizeof(float), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, small.data, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_kernel, kernel.data(), (2*k+1)*(2*k+1)*sizeof(float), cudaMemcpyHostToDevice));
     
     // Define execution configuration: 16x16 blocks
     dim3 block(16, 16);
@@ -94,14 +108,15 @@ int main() {
     
     // Launch the Gaussian blur kernel on the GPU
     imgblur<<<grid, block>>>(d_a, d_b, d_kernel, 5, small.rows, small.cols);
+    CUDA_CHECK(cudaGetLastError());
 
     // Transfer the processed image back to Host (CPU)
-    cudaMemcpy(small.data, d_b, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(small.data, d_b, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyDeviceToHost));
     
     // Free GPU memory
-    cudaFree(d_kernel);
-    cudaFree(d_a);
-    cudaFree(d_b);
+    CUDA_CHECK(cudaFree(d_kernel));
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
 
     // Display the Gaussian blurred result
     imshow("Image", small);
@@ -109,3 +124,4 @@ int main() {
 
     return 0;
 }
+#endif

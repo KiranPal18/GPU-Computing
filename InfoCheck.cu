@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
 
 using namespace std;
 
@@ -8,7 +9,7 @@ int main() {
     int deviceCount = 0;
     
     // Query the system to find how many CUDA-capable GPUs are installed
-    cudaGetDeviceCount(&deviceCount);
+    CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
     
     cout << "Number of CUDA devices: " << deviceCount << '\n' << '\n';
 
@@ -18,7 +19,7 @@ int main() {
         cudaDeviceProp prop;
         
         // Fetch properties for the GPU at index 'i'
-        cudaGetDeviceProperties(&prop, i);
+        CUDA_CHECK(cudaGetDeviceProperties(&prop, i));
 
         cout << "Device " << i << ":\n";
 

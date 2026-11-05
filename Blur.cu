@@ -1,9 +1,14 @@
 #include <bits/stdc++.h>
 #include <cuda_runtime.h>
+#include "cuda_check.h"
+#ifndef CUDA_KERNEL_TEST
 #include <opencv2/opencv.hpp>
+#endif
 
-using namespace std;p
+using namespace std;
+#ifndef CUDA_KERNEL_TEST
 using namespace cv;
+#endif
 
 // CUDA Kernel for basic image blurring (averaging)
 __global__ void imgblur(const unsigned char *a, unsigned char *b, const int k, const int h, const int w) {
@@ -29,9 +34,16 @@ __global__ void imgblur(const unsigned char *a, unsigned char *b, const int k, c
     b[i*w+j] = pixval / pixcnt;
 }
 
-int main() {
+#ifndef CUDA_KERNEL_TEST
+int main(int argc, char **argv) {
     // Read input image in grayscale using OpenCV
-    Mat image = imread("image.png", IMREAD_GRAYSCALE);
+    string path=argc>1 ? argv[1] : "image.png";
+    Mat image = imread(path, IMREAD_GRAYSCALE);
+
+    if (image.empty()) {
+        cerr << "Could not read " << path << "\n";
+        return 1;
+    }
 
     Mat small;
     // Resize image for consistent processing size
@@ -41,6 +53,8 @@ int main() {
         cv::Size(224, 224)
     );
  
+    if (!small.isContinuous()) small = small.clone();
+
     // Check if the image memory is contiguous for CUDA transfer
     if (small.isContinuous()) {
         cout << "YES\n";
@@ -54,11 +68,11 @@ int main() {
 
     // Pointers for GPU device memory
     unsigned char *d_a, *d_b;
-    cudaMalloc((void **)&d_a, small.cols*small.rows*sizeof(unsigned char));
-    cudaMalloc((void **)&d_b, small.cols*small.rows*sizeof(unsigned char));
+    CUDA_CHECK(cudaMalloc((void **)&d_a, small.cols*small.rows*sizeof(unsigned char)));
+    CUDA_CHECK(cudaMalloc((void **)&d_b, small.cols*small.rows*sizeof(unsigned char)));
 
     // Transfer image data from Host (CPU) to Device (GPU)
-    cudaMemcpy(d_a, small.data, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, small.data, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyHostToDevice));
     
     // Define execution configuration: 16x16 blocks
     dim3 block(16, 16);
@@ -69,16 +83,18 @@ int main() {
     
     // Launch the blurring kernel with a radius of 5
     imgblur<<<grid, block>>>(d_a, d_b, 5, small.rows, small.cols);
+    CUDA_CHECK(cudaGetLastError());
 
     // Transfer the processed image back to Host (CPU)
-    cudaMemcpy(small.data, d_b, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(small.data, d_b, small.cols*small.rows*sizeof(unsigned char), cudaMemcpyDeviceToHost));
 
     // Free GPU memory
-    cudaFree(d_a);
-    cudaFree(d_b);
+    CUDA_CHECK(cudaFree(d_a));
+    CUDA_CHECK(cudaFree(d_b));
 
     // Display the blurred result
     imshow("Image", small);
     waitKey(0);
     return 0;
 }
+#endif
