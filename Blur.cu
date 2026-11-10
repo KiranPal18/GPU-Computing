@@ -35,9 +35,9 @@ __global__ void imgblur(const unsigned char *a, unsigned char *b, const int k, c
 }
 
 #ifndef CUDA_KERNEL_TEST
-int main(int argc, char **argv) {
+int main() {
     // Read input image in grayscale using OpenCV
-    string path=argc>1 ? argv[1] : "image.png";
+    string path="image.png";
     Mat image = imread(path, IMREAD_GRAYSCALE);
 
     if (image.empty()) {
