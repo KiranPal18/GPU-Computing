@@ -18,8 +18,7 @@ __global__ void conv2d(const float* input, float* output, const float* weights, 
                 for (int ky = 0; ky < kernel_size; ++ky) {
                     int in_x = x + kx;
                     int in_y = y + ky;
-                    sum += input[(c_in * in_size + in_y) * in_size + in_x] * 
-                           weights[(((c_out * in_channels) + c_in) * kernel_size + ky) * kernel_size + kx];
+                    sum += input[(c_in * in_size + in_y) * in_size + in_x] * weights[(((c_out * in_channels) + c_in) * kernel_size + ky) * kernel_size + kx];
                 }
             }
         }

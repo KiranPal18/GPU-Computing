@@ -20,6 +20,9 @@ Tile_Matmul
 Coarsed_Tile_matmul
 Sum
 Transpose
+multi_gpu
+ddp
+llm_ops
 
 # Ignore image files
 *.png

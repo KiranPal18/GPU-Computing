@@ -7,8 +7,7 @@ using namespace std;
 #define tile_dim 16
 
 // General matrix multiplication: C = alpha*A*B + beta*C.
-__global__ void gemm(const float *a, const float *b, float *c,
-                     int n, int k, int m, float alpha, float beta) {
+__global__ void gemm(const float *a, const float *b, float *c, int n, int k, int m, float alpha, float beta) {
     __shared__ float tile_a[tile_dim][tile_dim];
     __shared__ float tile_b[tile_dim][tile_dim];
     int tx=threadIdx.x, ty=threadIdx.y;
